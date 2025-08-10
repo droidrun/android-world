@@ -63,9 +63,49 @@ _APPS = (
 )
 
 
-def get_app_mapping(app_name: str) -> Type[apps.AppSetup]:
+def get_installed_packages(env: interface.AsyncEnv) -> frozenset[str]:
+  """Returns the set of installed packages."""
+  return frozenset(adb_utils.get_all_package_names(env.controller.env))
+
+
+def is_package_installed(package_name: str, env: interface.AsyncEnv) -> bool:
+  """Checks if a package is installed."""
+  installed_packages = get_installed_packages(env)
+  return package_name in installed_packages
+
+
+def get_app_mapping(app_name: str) -> Type[apps.AppSetup] | None:
+  if not app_name:
+    return None
   mapping = {app.app_name: app for app in _APPS}
-  return mapping[app_name]
+  if app_name in mapping:
+    return mapping[app_name]
+  return None
+
+
+def get_app_list_to_setup(
+    task_ids: list[str] | None,
+) -> tuple[Type[apps.AppSetup], ...] | None:
+  """Returns the list of apps that are required by the tasks.
+
+  Args:
+    task_ids: A list of tasks.
+
+  Returns:
+    A tuple of AppSetup classes.
+  """
+  if not task_ids:
+    return None
+  required_apps = set()
+  for app_class in _APPS:
+    # Convert app_name to PascalCase, handling existing capitalization.
+    pascal_case_app_name = "".join(
+        word.capitalize() for word in app_class.app_name.split()
+    )
+    for task_id in task_ids:
+      if pascal_case_app_name in task_id:
+        required_apps.add(app_class)
+  return tuple(required_apps)
 
 
 def download_and_install_apk(
@@ -91,6 +131,12 @@ def setup_app(app: Type[apps.AppSetup], env: interface.AsyncEnv) -> None:
   app_snapshot.save_snapshot(app.app_name, env.controller)
 
 
+def install_app_if_not_installed(app_name: str, env: interface.AsyncEnv):
+  """Installs the apk of an app only if the apk is not installed."""
+  path = apps.download_app_data(apk)
+  adb_utils.install_apk(path, raw_env)
+
+
 def maybe_install_app(
     app: Type[apps.AppSetup], env: interface.AsyncEnv
 ) -> None:
@@ -112,11 +158,16 @@ def maybe_install_app(
     raise RuntimeError(f"Failed to download and install APK for {app.app_name}")
 
 
-def setup_apps(env: interface.AsyncEnv) -> None:
+def setup_apps(
+    env: interface.AsyncEnv,
+    app_list: tuple[Type[apps.AppSetup], ...] | None = None,
+) -> None:
   """Sets up apps for Android World.
 
   Args:
     env: The Android environment.
+    app_list: The list of apps to setup. If not specified, the default list of
+      apps will be used.
 
   Raises:
     RuntimeError: If cannot install APK.
@@ -130,6 +181,8 @@ def setup_apps(env: interface.AsyncEnv) -> None:
       "Installing and setting up applications on Android device. Please do not"
       " interact with device while installation is running."
   )
-  for app in _APPS:
+  if app_list is None:
+    app_list = _APPS
+  for app in app_list:
     maybe_install_app(app, env)
     setup_app(app, env)
