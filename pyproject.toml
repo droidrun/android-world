@@ -33,6 +33,7 @@ dependencies = [
     "termcolor",
     "fastapi",
     "uvicorn",
+    "audioop-lts>=0.2.2",
 ]
 
 [project.optional-dependencies]
@@ -40,8 +41,11 @@ dev = [
     "pytest",
 ]
 
+[project.scripts]
+androidserver = "server.main:main"
+
 [tool.setuptools]
-packages = ["android_world"]
+packages = ["android_world","server"]
 
 [tool.setuptools.package-dir]
 android_world = "android_world"
