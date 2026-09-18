@@ -115,7 +115,7 @@ class AudioRecorderRecordAudioWithFileName(_AudioRecorder):
     super().is_successful(env)
     file_name = self.params["file_name"]
     exists = file_utils.check_file_or_folder_exists(
-        file_name + ".m4a", self.create_file_task.data_directory, env.controller
+        file_name, self.create_file_task.data_directory, env.controller
     )
     if not exists:
       logging.info("%s not found", file_name)

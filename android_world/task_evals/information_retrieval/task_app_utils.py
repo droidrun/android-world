@@ -60,18 +60,14 @@ def create_task_from_proto(
   hide_until_date_ts = 0
   completed_date_ts = 0
   if task.HasField('due_date'):
-    due_date_ts = (
-        calendar_utils.convert_datetime_to_unix_ts(task.due_date, task.due_time)
-        * 1000
+    due_date_ts = _encode_task_date(
+        task.due_date, task.due_time, date_only_time='12pm'
     )
   # created date is 1 week before due date.
-  created_date_ts = due_date_ts - 7 * 3600
+  created_date_ts = due_date_ts - 7 * 24 * 3600 * 1000
   if task.HasField('hide_until_date'):
-    hide_until_date_ts = (
-        calendar_utils.convert_datetime_to_unix_ts(
-            task.hide_until_date, task.hide_until_time
-        )
-        * 1000
+    hide_until_date_ts = _encode_task_date(
+        task.hide_until_date, task.hide_until_time, date_only_time='12am'
     )
   if task.HasField('completed_date'):
     completed_date_ts = (
@@ -94,6 +90,19 @@ def create_task_from_proto(
       remoteId=str(uuid.uuid4().int),
       recurrence=None,
   )
+
+
+def _encode_task_date(date: str, time: str, *, date_only_time: str) -> int:
+  """Encodes Tasks' due/start dates, whose seconds mark an explicit time.
+
+  Tasks 13.6.3 (versionCode 130605), Task.kt, uses second=1 for timed
+  values, local noon for date-only due dates, and midnight for start dates.
+  Completion dates are ordinary timestamps and must not use this encoding.
+  """
+  timestamp = calendar_utils.convert_datetime_to_unix_ts(
+      date, time or date_only_time
+  ) * 1000
+  return timestamp + (1000 if time else 0)
 
 
 def add_tasks(
