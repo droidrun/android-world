@@ -52,19 +52,14 @@ def _generate_nl_date_options(date_str: str) -> list[str]:
     options.append('yesterday')
   if date > device_constants.DT.date():
     day_name = date.strftime('%A')
-    if date - device_constants.DT.date() == datetime.timedelta(days=7):
-      # Today has the same weekday; "this Sunday" would also mean today.
-      options.append('next {}'.format(day_name))
-    elif date - device_constants.DT.date() < datetime.timedelta(days=7):
+    if date - device_constants.DT.date() <= datetime.timedelta(days=7):
       options.append(day_name)
       options.append('this {}'.format(day_name))
     elif date - device_constants.DT.date() <= datetime.timedelta(days=14):
       options.append('the {} after next'.format(day_name))
   if date < device_constants.DT.date():
     day_name = date.strftime('%A')
-    if device_constants.DT.date() - date == datetime.timedelta(days=7):
-      options.append('last {}'.format(day_name))
-    elif device_constants.DT.date() - date < datetime.timedelta(days=7):
+    if device_constants.DT.date() - date <= datetime.timedelta(days=7):
       options.append(day_name)
   return options
 

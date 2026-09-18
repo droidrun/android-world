@@ -34,8 +34,6 @@ action budgets and required outcomes are preserved.
   expense notes as selection metadata. Accept copied notes with or without that
   annotation while retaining the original note body, all other expense fields,
   the exact requested additions, and preservation of existing rows.
-- Use `next <weekday>` and `last <weekday>` for dates exactly one week away,
-  avoiding wording that can also refer to the current day.
 - Retain the full requested date in completed-task questions. Keep the
   original request template, normal random-number consumption, and generated
   answer criteria unchanged.
@@ -58,8 +56,8 @@ completion status, and answer predicates remain unchanged.
 
 The regression tests use synthetic data and mocked device access. They cover
 visible and absent permission dialogs, denied or unknown grants, setup cleanup,
-snapshot location, exact filenames, expense integrity, date wording, category
-exclusions, and native timestamp normalization.
+snapshot location, exact filenames, expense integrity, full-date retention,
+category exclusions, and native timestamp normalization.
 
 After installing the repository dependencies and generating protobuf bindings:
 
