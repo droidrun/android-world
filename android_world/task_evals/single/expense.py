@@ -328,6 +328,8 @@ class ExpenseAddMultiple(_ExpenseAddMultiple):
 class ExpenseAddMultipleFromMarkor(_ExpenseAddMultiple):
   """Task to add multiple expenses from Markor into the Expense Tracking app."""
 
+  _REIMBURSABLE_SUFFIX = '. Reimbursable.'
+
   complexity = 6
   n_rows = 2
   n_rows_noise = 100
@@ -342,7 +344,7 @@ class ExpenseAddMultipleFromMarkor(_ExpenseAddMultiple):
   def initialize_task(self, env: interface.AsyncEnv):
     super().initialize_task(env)
     targets = [
-        dataclasses.replace(row, note=row.note + '. ' + 'Reimbursable.')
+        dataclasses.replace(row, note=row.note + self._REIMBURSABLE_SUFFIX)
         for row in self.params[sqlite_validators.ROW_OBJECTS]
     ]
     rows = targets + self.params[sqlite_validators.NOISE_ROW_OBJECTS]
@@ -352,6 +354,29 @@ class ExpenseAddMultipleFromMarkor(_ExpenseAddMultiple):
         _get_expense_rows_as_text(rows, 'csv'),
         'my_expenses.txt',
         env,
+    )
+
+  def validate_addition_integrity(
+      self,
+      before: list[sqlite_schema_utils.Expense],
+      after: list[sqlite_schema_utils.Expense],
+      reference_rows: list[sqlite_schema_utils.Expense],
+  ) -> bool:
+    """Treats the generated reimbursement annotation as selection metadata."""
+    # Check original rows before normalizing; otherwise an unrelated edit that
+    # appends this suffix could be hidden by the normalization.
+    if any(row not in after for row in before):
+      return False
+    normalized_after = [
+        dataclasses.replace(
+            row, note=row.note.removesuffix(self._REIMBURSABLE_SUFFIX)
+        )
+        if row not in before and isinstance(row.note, str)
+        else row
+        for row in after
+    ]
+    return super().validate_addition_integrity(
+        before, normalized_after, reference_rows
     )
 
   def tear_down(self, env: interface.AsyncEnv):

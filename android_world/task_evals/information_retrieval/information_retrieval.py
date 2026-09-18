@@ -82,7 +82,12 @@ class InformationRetrieval(task_eval.TaskEval, abc.ABC):
   def initialize_task(self, env: interface.AsyncEnv) -> None:
     super().initialize_task(env)
     proto_utils.initialize_proto(self.task, self.params)
+    requested_date = self.params.get('date')
     _maybe_replace_date(self.params)
+    if self.task.name == 'TasksCompletedTasksForDate':
+      # Past and future dates can both be reworded as the same bare weekday.
+      # Preserve the requested due date, after consuming the usual random draws.
+      self.params['date'] = requested_date
 
     # Initialize app-specific state
     relevant_state = self.task.relevant_state.state

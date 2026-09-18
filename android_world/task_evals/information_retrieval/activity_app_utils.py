@@ -304,7 +304,7 @@ _CATEGORY_TO_ACTIVITY_NAMES = {
         'Winter Skiing',
         'Ski Expedition',
     ],
-    'snowboarding': [
+    'snow boarding': [
         'Snowboard Trip',
         'Freestyle Session',
         'Slope Riding',
@@ -352,7 +352,7 @@ _CATEGORY_TO_ACTIVITY_NAMES = {
         'Windward Sailing',
         'Sailboat Expedition',
     ],
-    'skateboarding': [
+    'skate boarding': [
         'Skateboard Session',
         'Urban Skate',
         'Skatepark Session',

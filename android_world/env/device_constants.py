@@ -23,7 +23,7 @@ SCREEN_HEIGHT, SCREEN_WIDTH = 2400, 1080
 EMULATOR_DATA = "/storage/emulated/0/"
 
 # Location where app snapshots are stored.
-SNAPSHOT_DATA = "/data/data/android_world/snapshots"
+SNAPSHOT_DATA = "/data/local/tmp/android_world/snapshots"
 
 # keep-sorted start
 AUDIORECORDER_DATA = "/storage/emulated/0/Android/data/com.dimowner.audiorecorder/files/Music/records"

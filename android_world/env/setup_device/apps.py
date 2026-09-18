@@ -21,8 +21,10 @@ Interface.
 
 import abc
 import os
+import re
 import time
 from typing import Iterable
+import xml.etree.ElementTree as ET
 from absl import logging
 from android_world.env import adb_utils
 from android_world.env import interface
@@ -208,7 +210,26 @@ class ContactsApp(AppSetup):
       controller.click_element("Skip")
       time.sleep(2.0)
       # Allow Contacts to send you notifications?
-      controller.click_element("Don't allow")
+      try:
+        controller.click_element("Don't allow")
+      except ValueError:
+        try:
+          controller.click_element("Don’t allow")
+        except ValueError:
+          # A previous denial may persist across pm clear on API 33. Accept
+          # the absent dialog only when the intended denied state is proven.
+          permissions = adb_utils.issue_generic_request(
+              ["shell", "dumpsys", "package", "com.google.android.contacts"],
+              env.controller,
+          )
+          adb_utils.check_ok(
+              permissions, "Cannot verify Contacts notification permission"
+          )
+          if (
+              "android.permission.POST_NOTIFICATIONS: granted=false"
+              not in permissions.generic.output.decode()
+          ):
+            raise
       time.sleep(2.0)
     finally:
       adb_utils.close_app(cls.app_name, env.controller)
@@ -259,7 +280,27 @@ class MarkorApp(AppSetup):
 
       controller.click_element("OK")
       time.sleep(2.0)
-      controller.click_element("Allow access to manage all files")
+      try:
+        controller.click_element("Allow access to manage all files")
+      except ValueError:
+        # API 33 may retain the UID-level grant across app-data clearing.
+        # The permission screen is then omitted. Require the intended grant.
+        permission = adb_utils.issue_generic_request(
+            [
+                "shell",
+                "appops",
+                "get",
+                "net.gsantner.markor",
+                "MANAGE_EXTERNAL_STORAGE",
+            ],
+            env.controller,
+        )
+        adb_utils.check_ok(permission, "Cannot verify Markor all-files permission")
+        if (
+            "MANAGE_EXTERNAL_STORAGE: allow"
+            not in permission.generic.output.decode()
+        ):
+          raise
       time.sleep(2.0)
     finally:
       adb_utils.close_app(cls.app_name, env.controller)
@@ -324,7 +365,32 @@ class SimpleCalendarProApp(AppSetup):
   def setup(cls, env: interface.AsyncEnv) -> None:
     super().setup(env)
     adb_utils.launch_app(cls.app_name, env.controller)
-    adb_utils.close_app(cls.app_name, env.controller)
+    try:
+      # First launch creates event type 1 asynchronously. Closing before its
+      # preference is persisted produces a snapshot that hides every event.
+      prefs_path = f"/data/data/{cls.package_name()}/shared_prefs/Prefs.xml"
+      for _ in range(30):
+        response = adb_utils.issue_generic_request(
+            ["shell", "cat", prefs_path], env.controller
+        )
+        try:
+          adb_utils.check_ok(response)
+          preferences = ET.fromstring(response.generic.output.decode())
+        except (RuntimeError, ET.ParseError):
+          pass  # The file can be absent or unfinished during first launch.
+        else:
+          displayed = preferences.find("set[@name='display_event_types']")
+          if displayed is not None and any(
+              item.text == "1" for item in displayed.findall("string")
+          ):
+            break
+        time.sleep(0.5)
+      else:
+        raise RuntimeError(
+            "Calendar first-launch event visibility was not initialized"
+        )
+    finally:
+      adb_utils.close_app(cls.app_name, env.controller)
 
     # Grant permissions for calendar app.
     calendar_package = adb_utils.extract_package_name(
@@ -396,9 +462,29 @@ class SimpleGalleryProApp(AppSetup):
     try:
       controller = tools.AndroidToolController(env=env.controller)
       time.sleep(2.0)
-      controller.click_element("All files")
-      time.sleep(2.0)
-      controller.click_element("Allow access to manage all files")
+      try:
+        controller.click_element("All files")
+        time.sleep(2.0)
+        controller.click_element("Allow access to manage all files")
+      except ValueError:
+        # API 33 may retain the UID-level grant and omit either setup screen.
+        permission = adb_utils.issue_generic_request(
+            ["shell", "appops", "get", package, "MANAGE_EXTERNAL_STORAGE"],
+            env.controller,
+        )
+        adb_utils.check_ok(permission, "Cannot verify Gallery all-files permission")
+        uid_modes, package_modes = set(), set()
+        for line in permission.generic.output.decode().splitlines():
+          line = line.strip()
+          if line.startswith("Uid mode: MANAGE_EXTERNAL_STORAGE:"):
+            uid_modes.add(line.split(":", 2)[2].split(";", 1)[0].strip())
+          elif line.startswith("MANAGE_EXTERNAL_STORAGE:"):
+            package_modes.add(line.split(":", 1)[1].split(";", 1)[0].strip())
+        allowed = (
+            uid_modes == {"allow"} and package_modes <= {"allow", "default"}
+        ) or (not uid_modes and package_modes == {"allow"})
+        if not allowed:
+          raise
     finally:
       adb_utils.close_app(cls.app_name, env.controller)
 
@@ -426,9 +512,33 @@ class SimpleSMSMessengerApp(AppSetup):
     try:
       controller = tools.AndroidToolController(env=env.controller)
       time.sleep(2.0)
-      controller.click_element("SMS Messenger")
-      time.sleep(2.0)
-      controller.click_element("Set as default")
+      try:
+        controller.click_element("SMS Messenger")
+        time.sleep(2.0)
+        controller.click_element("Set as default")
+      except ValueError:
+        # The chooser is absent when the app already holds the owner SMS role.
+        # API 33 lacks `cmd role get-role-holders`; inspect its official dump.
+        roles = adb_utils.issue_generic_request(
+            ["shell", "dumpsys", "role"], env.controller,
+        )
+        adb_utils.check_ok(roles, "Cannot verify default SMS role")
+        sections = re.split(
+            r"(?m)^\s*user_id=(\d+)\s*$", roles.generic.output.decode()
+        )
+        owner_sections = [
+            sections[index + 1]
+            for index in range(1, len(sections), 2)
+            if sections[index] == "0"
+        ]
+        holders = []
+        if len(owner_sections) == 1:
+          holders = re.findall(
+              r"(?m)^\s*name=android\.app\.role\.SMS\s*\n\s*holders=([^\r\n]*)",
+              owner_sections[0],
+          )
+        if [holder.strip() for holder in holders] != [cls.package_name()]:
+          raise
     finally:
       adb_utils.close_app(cls.app_name, env.controller)
 
@@ -458,6 +568,8 @@ class AudioRecorder(AppSetup):
         [
             "shell",
             "monkey",
+            "--pct-syskeys",
+            "0",
             "-p",
             "com.dimowner.audiorecorder",
             "-candroid.intent.category.LAUNCHER",
@@ -608,34 +720,60 @@ class OpenTracksApp(AppSetup):
 
   @classmethod
   def setup(cls, env: interface.AsyncEnv) -> None:
-    adb_utils.launch_app(cls.app_name, env.controller)
-    adb_utils.close_app(cls.app_name, env.controller)
+    try:
+      # Always establish clean app data before saving the onboarding snapshot.
+      super().setup(env)
+      adb_utils.launch_app(cls.app_name, env.controller)
+      adb_utils.close_app(cls.app_name, env.controller)
 
-    # Grant permissions for open tracks app.
-    open_tracks_package = adb_utils.extract_package_name(
-        adb_utils.get_adb_activity("open tracks")
-    )
-    adb_utils.grant_permissions(
-        open_tracks_package,
-        "android.permission.ACCESS_COARSE_LOCATION",
-        env.controller,
-    )
-    adb_utils.grant_permissions(
-        open_tracks_package,
-        "android.permission.ACCESS_FINE_LOCATION",
-        env.controller,
-    )
-    adb_utils.grant_permissions(
-        open_tracks_package,
-        "android.permission.POST_NOTIFICATIONS",
-        env.controller,
-    )
-    time.sleep(2.0)
-    controller = tools.AndroidToolController(env=env.controller)
-    # Give permission for bluetooth, can't be done through adb.
-    controller.click_element("Allow")
-    adb_utils.launch_app("activity tracker", env.controller)
-    adb_utils.close_app("activity tracker", env.controller)
+      # Grant permissions for open tracks app.
+      open_tracks_package = adb_utils.extract_package_name(
+          adb_utils.get_adb_activity("open tracks")
+      )
+      adb_utils.grant_permissions(
+          open_tracks_package,
+          "android.permission.ACCESS_COARSE_LOCATION",
+          env.controller,
+      )
+      adb_utils.grant_permissions(
+          open_tracks_package,
+          "android.permission.ACCESS_FINE_LOCATION",
+          env.controller,
+      )
+      adb_utils.grant_permissions(
+          open_tracks_package,
+          "android.permission.POST_NOTIFICATIONS",
+          env.controller,
+      )
+      time.sleep(2.0)
+      controller = tools.AndroidToolController(env=env.controller)
+      # Give permission for bluetooth, can't be done through adb.
+      try:
+        controller.click_element("Allow")
+      except ValueError:
+        # API 33 may omit the prompt when both Bluetooth grants already exist.
+        permissions = adb_utils.issue_generic_request(
+            ["shell", "dumpsys", "package", open_tracks_package],
+            env.controller,
+        )
+        adb_utils.check_ok(
+            permissions, "Cannot verify OpenTracks Bluetooth permissions"
+        )
+        permission_states = {
+            "android.permission.BLUETOOTH_SCAN": set(),
+            "android.permission.BLUETOOTH_CONNECT": set(),
+        }
+        for line in permissions.generic.output.decode().splitlines():
+          name, _, state = line.strip().partition(":")
+          if name in permission_states:
+            permission_states[name].add(state.split(",", 1)[0].strip())
+        if any(
+            states != {"granted=true"} for states in permission_states.values()
+        ):
+          raise
+      adb_utils.launch_app("activity tracker", env.controller)
+    finally:
+      adb_utils.close_app(cls.app_name, env.controller)
 
 
 class VlcApp(AppSetup):
@@ -668,6 +806,8 @@ class VlcApp(AppSetup):
         [
             "shell",
             "monkey",
+            "--pct-syskeys",
+            "0",
             "-p",
             package,
             "-candroid.intent.category.LAUNCHER",
@@ -680,11 +820,31 @@ class VlcApp(AppSetup):
       controller = tools.AndroidToolController(env=env.controller)
       controller.click_element("Skip")
       time.sleep(2.0)
-      controller.click_element("GRANT PERMISSION")
-      time.sleep(2.0)
-      controller.click_element("OK")
-      time.sleep(2.0)
-      controller.click_element("Allow access to manage all files")
+      try:
+        controller.click_element("GRANT PERMISSION")
+        time.sleep(2.0)
+        controller.click_element("OK")
+        time.sleep(2.0)
+        controller.click_element("Allow access to manage all files")
+      except ValueError:
+        # A retained all-files grant can omit the permission onboarding screens.
+        permission = adb_utils.issue_generic_request(
+            ["shell", "appops", "get", package, "MANAGE_EXTERNAL_STORAGE"],
+            env.controller,
+        )
+        adb_utils.check_ok(permission, "Cannot verify VLC all-files permission")
+        uid_modes, package_modes = set(), set()
+        for line in permission.generic.output.decode().splitlines():
+          line = line.strip()
+          if line.startswith("Uid mode: MANAGE_EXTERNAL_STORAGE:"):
+            uid_modes.add(line.split(":", 2)[2].split(";", 1)[0].strip())
+          elif line.startswith("MANAGE_EXTERNAL_STORAGE:"):
+            package_modes.add(line.split(":", 1)[1].split(";", 1)[0].strip())
+        allowed = (
+            uid_modes == {"allow"} and package_modes <= {"allow", "default"}
+        ) or (not uid_modes and package_modes == {"allow"})
+        if not allowed:
+          raise
     finally:
       adb_utils.close_app(cls.app_name, env.controller)
 
@@ -719,6 +879,8 @@ class JoplinApp(AppSetup):
         [
             "shell",
             "monkey",
+            "--pct-syskeys",
+            "0",
             "-p",
             joplin_package,
             "-candroid.intent.category.LAUNCHER",

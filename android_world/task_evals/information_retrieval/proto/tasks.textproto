@@ -1525,7 +1525,7 @@ tasks {
 
 tasks {
   name: "TasksCompletedTasksForDate"
-  prompt: "Which tasks have I completed for {date} in Tasks app? Answer with the titles only. If there are multiples titles, format your answer in a comma separated list."
+  prompt: "Which completed tasks have a due date of {date} in Tasks app? Answer with the titles only. If there are multiples titles, format your answer in a comma separated list."
   complexity: 1
   relevant_state {
     state: {
