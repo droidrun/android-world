@@ -40,7 +40,6 @@ class MarkorCreateNoteAndSms(markor.Markor):
       "Create a new note in Markor named {file_name} with the following text:"
       " {text}. Share the entire content of the note with the phone number"
       " {number} via SMS using Simple SMS Messenger"
-      ". Leave Simple SMS Messenger as the foreground app when finished."
   )
 
   def initialize_task(self, env: interface.AsyncEnv) -> None:

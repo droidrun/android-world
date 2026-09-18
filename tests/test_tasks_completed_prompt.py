@@ -1,4 +1,4 @@
-"""Completed-task questions retain an explicit due date without changing grading.
+"""Completed-task questions retain the full date without changing grading.
 
 All fixtures are synthetic and device setup is mocked.
 """
@@ -45,7 +45,7 @@ def test_two_tuesdays_remain_distinct_even_when_rewording_collides(monkeypatch, 
         task = task_type()(params(date))
         task.initialize_task(env)
         goals.append(task.goal)
-        assert f'completed tasks have a due date of {date}' in task.goal
+        assert f'Which tasks have I completed for {date} in Tasks app?' in task.goal
         assert 'Tuesday' not in task.goal
         assert {row.due_date for row in task.task.relevant_state.state.tasks_app.tasks_app_tasks} == {date}
         assert {row.completed_date for row in task.task.relevant_state.state.tasks_app.tasks_app_tasks} == {'October 09 2023'}

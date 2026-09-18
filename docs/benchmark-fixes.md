@@ -34,13 +34,11 @@ action budgets and required outcomes are preserved.
   expense notes as selection metadata. Accept copied notes with or without that
   annotation while retaining the original note body, all other expense fields,
   the exact requested additions, and preservation of existing rows.
-- Make the existing final foreground-app requirement explicit in the
-  Markor-to-SMS request.
 - Use `next <weekday>` and `last <weekday>` for dates exactly one week away,
   avoiding wording that can also refer to the current day.
-- Ask explicitly for the due date of completed Tasks items and retain its full
-  date. Keep normal random-number consumption and the generated answer
-  criteria unchanged.
+- Retain the full requested date in completed-task questions. Keep the
+  original request template, normal random-number consumption, and generated
+  answer criteria unchanged.
 - Match the `skate boarding` and `snow boarding` category names used by task
   templates, so category/date exclusions apply to generated distractors.
 
